@@ -8,6 +8,7 @@
 # - Uses candidate if available; otherwise writes to running
 # - APPLY: sets hostname + creates Loopback; REVERT: restores hostname + removes Loopback
 # - XML printing is ON by default and pretty-printed; disable with: --xml off
+# - NEW: Script now prints the OUTGOING <config> XML payload before edit-config
 #
 # Works with older ncclient: avoids banner_timeout/auth_timeout/keepalive kwargs.
 # Keepalive is set via m.session.set_keepalive(30) after connecting.
@@ -64,15 +65,12 @@ def _pretty_xml(xml_text, indent="  "):
     """Return pretty-printed XML; fall back to raw on parse errors."""
     try:
         from xml.dom import minidom
-        # minidom can double-insert XML declarations; strip leading BOM/space
         xml_str = xml_text.lstrip()
         dom = minidom.parseString(xml_str.encode("utf-8") if isinstance(xml_str, str) else xml_str)
         pretty = dom.toprettyxml(indent=indent, encoding="utf-8").decode("utf-8")
-        # remove empty lines introduced by toprettyxml
         lines = [ln for ln in pretty.splitlines() if ln.strip()]
         return "\n".join(lines)
     except Exception:
-        # Best-effort fallback: return original text
         return xml_text
 
 class Printer:
@@ -109,13 +107,13 @@ class Printer:
     def fail(self, msg):
         print(f"  {self._color(ICON['fail'] + ' ' + msg, C.RED)}")
 
-    def xml(self, xml_text, max_chars=4000):
+    def xml(self, xml_text, max_chars=4000, header="XML"):
         if not self.show_xml:
             self.info("(XML suppressed; run with --xml on to print replies)")
             return
         pretty = _pretty_xml(xml_text)
         trimmed = pretty if len(pretty) <= max_chars else (pretty[:max_chars] + "\n... [truncated]")
-        print(self._color("  -- XML (pretty) -----------------------------------------------------", C.GRAY))
+        print(self._color(f"  -- {header} (pretty) -----------------------------------------------", C.GRAY))
         for line in trimmed.splitlines():
             print(self._color("  | ", C.GRAY) + line)
         print(self._color("  --------------------------------------------------------------------", C.GRAY))
@@ -214,6 +212,9 @@ def do_apply(m, p: Printer, target_ds, new_hostname, loop_id, has_candidate):
     m.lock(target=target_ds)
     try:
         p.step("Edit", ICON["edit"], f"edit-config (target={target_ds}) - set hostname and add Loopback{loop_id}")
+        # NEW: Show exactly what we are sending in the <config> body
+        p.info("Outgoing edit-config <config> payload:")
+        p.xml(edit_payload, header="Outgoing <config>")
         t0 = time.perf_counter()
         m.edit_config(target=target_ds, config=edit_payload, default_operation="merge")
         p.ok(f"edit-config applied ({time.perf_counter() - t0:.2f}s)")
@@ -244,6 +245,9 @@ def do_revert(m, p: Printer, target_ds, revert_hostname, loop_id, has_candidate)
     m.lock(target=target_ds)
     try:
         p.step("Edit", ICON["edit"], f"edit-config (REVERT target={target_ds}) - restore hostname and remove Loopback{loop_id}")
+        # NEW: Show exactly what we are sending in the <config> body (revert)
+        p.info("Outgoing edit-config <config> payload (REVERT):")
+        p.xml(edit_payload, header="Outgoing <config> (revert)")
         t0 = time.perf_counter()
         m.edit_config(target=target_ds, config=edit_payload, default_operation="merge")
         p.ok(f"revert edit-config applied ({time.perf_counter() - t0:.2f}s)")
