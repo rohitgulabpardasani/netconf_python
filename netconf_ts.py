@@ -31,18 +31,32 @@ def extract_config_from_rpc(rpc_xml: str) -> str:
     rpc_xml = rpc_xml.strip()
     if not rpc_xml or rpc_xml.startswith("<!-- PASTE"):
         _die("NO XML found")
+
     try:
         root = ET.fromstring(rpc_xml)
     except ET.ParseError as e:
         raise ValueError(f"Invalid XML: {e}")
+
+    def localname(tag: str) -> str:
+        # Handles '{ns}name' and 'name'
+        return tag.split('}', 1)[-1] if tag.startswith('{') else tag
+
+    # Find the *exact* <config> element (not <edit-config>)
     cfg = None
-    for child in root.iter():
-        if child.tag.endswith('config'):
-            cfg = child
+    for node in root.iter():
+        if localname(node.tag) == 'config':
+            cfg = node
             break
+
     if cfg is None:
-        raise ValueError("Could not find <config> element inside the RPC.")
-    return ET.tostring(cfg, encoding="unicode")
+        raise ValueError("Could not find <config> element inside the RPC. Make sure you pasted the full <rpc> export.")
+
+    cfg_xml = ET.tostring(cfg, encoding="unicode")
+    # Basic sanity check
+    if not cfg_xml.lstrip().startswith("<config") or not cfg_xml.rstrip().endswith("</config>"):
+        raise ValueError("Extracted payload is not a standalone <config>...</config> block.")
+
+    return cfg_xml
 
 def main():
     parser = argparse.ArgumentParser(description="Apply student RPC to candidate, validate, commit, and save")
