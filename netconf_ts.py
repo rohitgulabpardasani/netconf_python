@@ -12,6 +12,7 @@
 import argparse
 import sys
 from xml.etree import ElementTree as ET
+from typing import Optional
 from ncclient import manager
 from ncclient.operations import RPCError
 
@@ -40,7 +41,7 @@ def extract_config_from_rpc(rpc_xml: str) -> str:
     def localname(tag: str) -> str:
         return tag.split('}', 1)[-1] if tag.startswith('{') else tag
 
-    def namespace(tag: str) -> str | None:
+    def namespace(tag: str) -> Optional[str]:
         return tag[1:].split('}')[0] if tag.startswith('{') else None
 
     # Find the *exact* <config> element (not <edit-config>)
