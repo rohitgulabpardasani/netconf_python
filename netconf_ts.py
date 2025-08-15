@@ -38,8 +38,10 @@ def extract_config_from_rpc(rpc_xml: str) -> str:
         raise ValueError(f"Invalid XML: {e}")
 
     def localname(tag: str) -> str:
-        # Handles '{ns}name' and 'name'
         return tag.split('}', 1)[-1] if tag.startswith('{') else tag
+
+    def namespace(tag: str) -> str | None:
+        return tag[1:].split('}')[0] if tag.startswith('{') else None
 
     # Find the *exact* <config> element (not <edit-config>)
     cfg = None
@@ -51,12 +53,18 @@ def extract_config_from_rpc(rpc_xml: str) -> str:
     if cfg is None:
         raise ValueError("Could not find <config> element inside the RPC. Make sure you pasted the full <rpc> export.")
 
-    cfg_xml = ET.tostring(cfg, encoding="unicode")
-    # Basic sanity check
-    if not cfg_xml.lstrip().startswith("<config") or not cfg_xml.rstrip().endswith("</config>"):
-        raise ValueError("Extracted payload is not a standalone <config>...</config> block.")
+    cfg_ns = namespace(cfg.tag)
 
-    return cfg_xml
+    # If the <config> tag lacks the NETCONF base namespace, wrap children into a
+    # correctly-namespaced <config> wrapper so ncclient is happy.
+    if cfg_ns is None:
+        # Serialize children only
+        children_xml = ''.join(ET.tostring(child, encoding='unicode') for child in list(cfg))
+        wrapped = f"<config xmlns=\"{NETCONF_NS}\">{children_xml}</config>"
+        return wrapped
+
+    # Otherwise, return as-is (may appear as <ns0:config ...>)
+    return ET.tostring(cfg, encoding="unicode")
 
 def main():
     parser = argparse.ArgumentParser(description="Apply student RPC to candidate, validate, commit, and save")
