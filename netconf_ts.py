@@ -1,27 +1,17 @@
 #!/usr/bin/env python3
 # netconf_candidate_validate_commit_save.py
-#
-# Minimal teaching script that:
-#   1) Accepts a full <rpc> ... </rpc> pasted from YANG Suite (student block)
-#   2) Extracts the <config> subtree from that RPC
-#   3) Applies it to the *candidate* datastore
-#   4) Validates candidate
-#   5) Commits to running
-#   6) Saves configuration (startup or Cisco save-config if available)
 
 import argparse
 import sys
-from xml.etree import ElementTree as ET
 from typing import Optional
+from xml.etree import ElementTree as ET
 from ncclient import manager
 from ncclient.operations import RPCError
-from ncclient.xml_ import to_ele, new_ele
+from ncclient.xml_ import to_ele
 
-# -------------------- STUDENT FULL <rpc> XML (PASTE HERE) --------------------
 STUDENT_FULL_RPC_XML = r"""
 <!-- PASTE FULL <rpc> XML FROM YANG SUITE HERE -->
 """
-# ------------------ END STUDENT FULL <rpc> XML (PASTE HERE) ------------------
 
 NETCONF_NS = "urn:ietf:params:xml:ns:netconf:base:1.0"
 
@@ -33,7 +23,6 @@ def extract_config_from_rpc(rpc_xml: str) -> str:
     rpc_xml = rpc_xml.strip()
     if not rpc_xml or rpc_xml.startswith("<!-- PASTE"):
         _die("NO XML found")
-
     try:
         root = ET.fromstring(rpc_xml)
     except ET.ParseError as e:
@@ -45,27 +34,18 @@ def extract_config_from_rpc(rpc_xml: str) -> str:
     def namespace(tag: str) -> Optional[str]:
         return tag[1:].split('}')[0] if tag.startswith('{') else None
 
-    # Find the *exact* <config> element (not <edit-config>)
     cfg = None
     for node in root.iter():
         if localname(node.tag) == 'config':
             cfg = node
             break
-
     if cfg is None:
-        raise ValueError("Could not find <config> element inside the RPC. Make sure you pasted the full <rpc> export.")
+        raise ValueError("Could not find <config> element inside the RPC.")
 
     cfg_ns = namespace(cfg.tag)
-
-    # If the <config> tag lacks the NETCONF base namespace, wrap children into a
-    # correctly-namespaced <config> wrapper so ncclient is happy.
     if cfg_ns is None:
-        # Serialize children only
         children_xml = ''.join(ET.tostring(child, encoding='unicode') for child in list(cfg))
-        wrapped = f"<config xmlns=\"{NETCONF_NS}\">{children_xml}</config>"
-        return wrapped
-
-    # Otherwise, return as-is (may appear as <ns0:config ...>)
+        return f"<config xmlns=\"{NETCONF_NS}\">{children_xml}</config>"
     return ET.tostring(cfg, encoding="unicode")
 
 def main():
@@ -127,13 +107,12 @@ def main():
                 print("[OK] Saved to startup")
             else:
                 print("[STEP] startup not supported; attempting Cisco save-config RPC")
-# Build the element (no <rpc> wrapper; ncclient will wrap it)
-save_ele = to_ele('<cisco-ia:save-config xmlns:cisco-ia="http://cisco.com/yang/cisco-ia"/>')
-try:
-    m.dispatch(save_ele)
-    print("[OK] Cisco save-config RPC dispatched")
-except Exception as e:
-    print(f"[WARN] save-config RPC failed: {e}")
+                try:
+                    save_ele = to_ele('<cisco-ia:save-config xmlns:cisco-ia="http://cisco.com/yang/cisco-ia"/>')
+                    m.dispatch(save_ele)
+                    print("[OK] Cisco save-config RPC dispatched")
+                except Exception as e:
+                    print(f"[WARN] save-config RPC failed: {e}")
         finally:
             print("[STEP] Unlock candidate")
             try:
