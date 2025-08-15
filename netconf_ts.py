@@ -15,6 +15,7 @@ from xml.etree import ElementTree as ET
 from typing import Optional
 from ncclient import manager
 from ncclient.operations import RPCError
+from ncclient.xml_ import to_ele, new_ele
 
 # -------------------- STUDENT FULL <rpc> XML (PASTE HERE) --------------------
 STUDENT_FULL_RPC_XML = r"""
@@ -126,16 +127,13 @@ def main():
                 print("[OK] Saved to startup")
             else:
                 print("[STEP] startup not supported; attempting Cisco save-config RPC")
-                save_rpc = (
-                    f"<rpc xmlns=\"{NETCONF_NS}\" message-id=\"save1\">"
-                    "<cisco-ia:save-config xmlns:cisco-ia=\"http://cisco.com/yang/cisco-ia\"/>"
-                    "</rpc>"
-                )
-                try:
-                    m.dispatch(save_rpc)
-                    print("[OK] Cisco save-config RPC dispatched")
-                except Exception as e:
-                    print(f"[WARN] save-config RPC failed: {e}")
+# Build the element (no <rpc> wrapper; ncclient will wrap it)
+save_ele = to_ele('<cisco-ia:save-config xmlns:cisco-ia="http://cisco.com/yang/cisco-ia"/>')
+try:
+    m.dispatch(save_ele)
+    print("[OK] Cisco save-config RPC dispatched")
+except Exception as e:
+    print(f"[WARN] save-config RPC failed: {e}")
         finally:
             print("[STEP] Unlock candidate")
             try:
